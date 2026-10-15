@@ -117,6 +117,16 @@ class TestServer:
             "add_note", "list_library", "remove_paper", "export_bibtex",
         }  # fmt: skip
 
+    async def test_tool_annotations(self, services):
+        tools = {t.name: t.annotations for t in await create_server(services).list_tools()}
+        for name, a in tools.items():
+            hints = (a.read_only_hint, a.destructive_hint, a.idempotent_hint, a.open_world_hint)
+            assert None not in hints, f"{name} is missing a hint"
+        read_only = {"search_papers", "get_paper", "read_paper", "find_related", "list_library", "export_bibtex"}
+        assert {n for n, a in tools.items() if a.read_only_hint} == read_only
+        assert {n for n, a in tools.items() if a.destructive_hint} == {"remove_paper"}
+        assert {n for n, a in tools.items() if a.open_world_hint} == {"search_papers", "get_paper", "read_paper", "find_related", "save_paper"}
+
     async def test_research_flow(self, services):
         server = create_server(services)
         out = text_of(await server.call_tool("search_papers", {"query": "corrective rag"}))

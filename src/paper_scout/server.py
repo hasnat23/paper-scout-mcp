@@ -5,6 +5,7 @@ from __future__ import annotations
 import textwrap
 
 from mcp.server.mcpserver import MCPServer
+from mcp.types import ToolAnnotations
 
 from .arxiv import ArxivClient, Paper, parse_id
 from .library import Library
@@ -14,6 +15,14 @@ INSTRUCTIONS = """Research assistant tools for academic papers on arXiv.
 Typical flow: search_papers -> get_paper (abstract, citations, TL;DR) -> read_paper (table of
 contents, then one section at a time) -> find_related (citations/references) -> save_paper with
 tags and notes -> export_bibtex. Always cite papers by arXiv id."""
+
+# Behavior hints for MCP clients. All four are set on every tool so clients never fall back to defaults.
+ARXIV_READ = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=True)
+LIBRARY_READ = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
+# save_paper looks the paper up on arXiv before writing it to the library.
+LIBRARY_SAVE = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True)
+LIBRARY_ADD = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False)
+LIBRARY_DELETE = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=True, open_world_hint=False)
 
 
 class Services:
@@ -55,7 +64,7 @@ def create_server(services: Services | None = None) -> MCPServer:
         return next((p for p in s.arxiv.get(wanted) if p.id == wanted), None)
     server = MCPServer("paper-scout", instructions=INSTRUCTIONS, version="0.1.0", log_level="WARNING")
 
-    @server.tool()
+    @server.tool(annotations=ARXIV_READ)
     def search_papers(query: str, max_results: int = 8, sort: str = "relevance", category: str | None = None) -> str:
         """Search arXiv. `query` is free text (all terms must match) or arXiv syntax (ti:, au:, abs:, cat:).
         `sort`: relevance | newest | updated. `category` e.g. cs.CL, cs.LG, cs.IR."""
@@ -64,7 +73,7 @@ def create_server(services: Services | None = None) -> MCPServer:
             return f"No arXiv results for {query!r}. Try fewer or broader terms."
         return "\n\n".join(f"{i}. {_card(p)}" for i, p in enumerate(papers, 1))
 
-    @server.tool()
+    @server.tool(annotations=ARXIV_READ)
     def get_paper(arxiv_id: str) -> str:
         """Full metadata and abstract for one paper, plus citation count and TL;DR from Semantic Scholar."""
         p = lookup(arxiv_id)
@@ -91,7 +100,7 @@ def create_server(services: Services | None = None) -> MCPServer:
         lines += [f"Links: {p.url} · {p.pdf_url}", "", "## Abstract", p.abstract]
         return "\n".join(lines)
 
-    @server.tool()
+    @server.tool(annotations=ARXIV_READ)
     def read_paper(arxiv_id: str, section: str | None = None, max_chars: int = 12000) -> str:
         """Read a paper's full text from arXiv's HTML version. Without `section`, returns the table of
         contents; pass a section number (e.g. "3") or a title fragment (e.g. "method") to read it."""
@@ -112,7 +121,7 @@ def create_server(services: Services | None = None) -> MCPServer:
         text = match.text if len(match.text) <= max_chars else match.text[:max_chars] + f"\n\n[truncated at {max_chars:,} chars]"
         return f"## {match.title}\n{text}"
 
-    @server.tool()
+    @server.tool(annotations=ARXIV_READ)
     def find_related(arxiv_id: str, direction: str = "citations", limit: int = 10) -> str:
         """Most-cited papers that cite this one (`citations`) or that it cites (`references`)."""
         papers = s.scholar.linked(parse_id(arxiv_id), direction=direction, limit=min(limit, 50))
@@ -124,7 +133,7 @@ def create_server(services: Services | None = None) -> MCPServer:
         ]
         return f"{direction.title()} of arXiv:{arxiv_id}, most cited first:\n" + "\n".join(rows)
 
-    @server.tool()
+    @server.tool(annotations=LIBRARY_SAVE)
     def save_paper(arxiv_id: str, tags: list[str] | None = None, note: str | None = None) -> str:
         """Save a paper to the local library, optionally with tags and a note."""
         p = lookup(arxiv_id)
@@ -133,7 +142,7 @@ def create_server(services: Services | None = None) -> MCPServer:
         s.library.save(p, tags=tags, note=note)
         return f"Saved arXiv:{p.id} \"{p.title}\"" + (f" with tags {tags}" if tags else "")
 
-    @server.tool()
+    @server.tool(annotations=LIBRARY_ADD)
     def add_note(arxiv_id: str, note: str) -> str:
         """Attach a note to a saved paper."""
         try:
@@ -142,7 +151,7 @@ def create_server(services: Services | None = None) -> MCPServer:
             return str(exc.args[0])
         return f"Note added to arXiv:{parse_id(arxiv_id)}."
 
-    @server.tool()
+    @server.tool(annotations=LIBRARY_READ)
     def list_library(tag: str | None = None, query: str | None = None) -> str:
         """List saved papers, optionally filtered by tag or a text query. Shows tags and notes."""
         entries = s.library.entries(tag=tag, query=query)
@@ -156,12 +165,12 @@ def create_server(services: Services | None = None) -> MCPServer:
             out.append(block)
         return f"{len(entries)} paper(s):\n" + "\n".join(out)
 
-    @server.tool()
+    @server.tool(annotations=LIBRARY_DELETE)
     def remove_paper(arxiv_id: str) -> str:
         """Remove a paper (and its tags and notes) from the library."""
         return "Removed." if s.library.remove(parse_id(arxiv_id)) else "Not in library."
 
-    @server.tool()
+    @server.tool(annotations=LIBRARY_READ)
     def export_bibtex(tag: str | None = None, arxiv_ids: list[str] | None = None) -> str:
         """BibTeX for saved papers: all of them, one tag, or specific ids."""
         bib = s.library.bibtex(ids=[parse_id(i) for i in arxiv_ids] if arxiv_ids else None, tag=tag)
