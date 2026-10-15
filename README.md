@@ -4,6 +4,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-server-8A2BE2.svg)](https://modelcontextprotocol.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![M8ven Score](https://m8ven.ai/badge/mcp/hasnat23-paper-scout-mcp-1nlgwy?v=362a81a71328ade442160f3a9684a36f)](https://m8ven.ai/mcp/hasnat23-paper-scout-mcp-1nlgwy?s=readme)
 
 **Give your coding agent a research assistant.** An [MCP](https://modelcontextprotocol.io) server that lets Claude Code, Cursor, Claude Desktop
 or any MCP client **search arXiv, read papers section by section, follow citation graphs, and keep a local reading library with notes and BibTeX export**.
